@@ -19,3 +19,4 @@ export const googleProvider = new GoogleAuthProvider();
 export const database = getDatabase(app);
 export const tasksRef = ref(database, 'tasks');
 export const calendarEventsRef = ref(database, 'calendarEvents');
+export const goalsRef = ref(database, 'goals');
