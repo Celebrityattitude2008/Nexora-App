@@ -63,27 +63,27 @@ export function MemeGenerator() {
     if (!selectedMeme) return;
 
     setLoading(true);
+    setError('');
     try {
-      const params = new URLSearchParams({
+      const response = await axios.post('/api/meme', {
         template_id: selectedMeme.id,
-        username: 'nexora_user',
-        password: 'imgflip',
+        boxes: texts.map((text) => ({ text })),
       });
 
-      texts.forEach((text, idx) => {
-        params.append(`boxes[${idx}][text]`, text);
-      });
-
-      const response = await axios.post('https://api.imgflip.com/caption_image', params);
       const data = response.data as GeneratedMeme;
 
       if (data.success) {
         setGeneratedMeme(data.data.url);
       } else {
-        setError('Failed to generate meme');
+        setError('Failed to generate meme. Please try again.');
       }
     } catch (err) {
-      setError('Error generating meme');
+      const message = axios.isAxiosError(err)
+        ? err.response?.data?.error || err.message
+        : err instanceof Error
+        ? err.message
+        : 'Error generating meme';
+      setError(message);
     }
     setLoading(false);
   };
@@ -115,25 +115,26 @@ export function MemeGenerator() {
       </div>
 
       {/* Profile Picture Upload */}
-      <div className="mb-6">
+      <div className="mb-6 rounded-lg border border-slate-700/60 bg-slate-800/40 p-4">
         <button
           onClick={() => setShowProfileUpload(!showProfileUpload)}
-          className="text-sm text-amber-300 hover:text-amber-200 transition mb-2"
+          className="text-sm text-amber-300 hover:text-amber-200 transition mb-2 font-semibold"
         >
-          {showProfileUpload ? '▼' : '▶'} {'Add Your Profile Picture (Base64)'}
+          {showProfileUpload ? '▼' : '▶'} Upload Profile Picture (Optional)
         </button>
         {showProfileUpload && (
-          <div className="rounded-lg bg-slate-800/60 border border-slate-700/60 p-4 mt-2">
+          <div className="mt-3 space-y-3">
+            <p className="text-xs text-slate-400">Upload an image to add as a watermark (stored as Base64)</p>
             <input
               type="file"
               accept="image/*"
               onChange={handleProfilePicUpload}
-              className="text-xs text-slate-300 w-full"
+              className="text-xs text-slate-300 w-full cursor-pointer file:mr-2 file:rounded file:border file:border-slate-600 file:bg-slate-800/60 file:px-3 file:py-1.5 file:text-xs file:text-slate-300 file:cursor-pointer"
             />
             {profilePic && (
               <div className="mt-3 flex flex-col items-center gap-2">
-                <img src={profilePic} alt="Profile" className="w-12 h-12 rounded-full" />
-                <p className="text-xs text-slate-400 break-all line-clamp-2">{profilePic.substring(0, 50)}...</p>
+                <img src={profilePic} alt="Profile" className="w-12 h-12 rounded-full border border-slate-600" />
+                <p className="text-xs text-slate-400 text-center">Profile picture ready (Base64 format)</p>
               </div>
             )}
           </div>
@@ -143,7 +144,7 @@ export function MemeGenerator() {
       {/* Meme Templates */}
       {!selectedMeme ? (
         <>
-          {error && <div className="text-sm text-amber-300 mb-4">{error}</div>}
+          {error && <div className="text-sm text-amber-300 mb-4 rounded-lg border border-amber-400/30 bg-amber-400/10 p-3">{error}</div>}
           {loading ? (
             <div className="text-center py-8 text-slate-400">Loading templates...</div>
           ) : (
@@ -207,16 +208,28 @@ export function MemeGenerator() {
               {loading ? 'Generating...' : 'Generate Meme'}
             </button>
 
+            {error && <div className="text-sm text-amber-300 mb-4 rounded-lg border border-amber-400/30 bg-amber-400/10 p-3">{error}</div>}
+
             {/* Generated Meme */}
             {generatedMeme && (
               <div className="rounded-lg border border-amber-400/30 bg-slate-950/70 p-4">
                 <img src={generatedMeme} alt="Generated meme" className="w-full rounded-lg mb-3 max-h-96" />
-                <button
-                  onClick={downloadMeme}
-                  className="w-full rounded-lg bg-green-400/20 border border-green-400/40 px-4 py-2 text-sm font-medium text-green-200 hover:bg-green-400/30 transition"
-                >
-                  Download Meme
-                </button>
+                <div className="flex gap-3">
+                  <button
+                    onClick={downloadMeme}
+                    className="flex-1 rounded-lg bg-green-400/20 border border-green-400/40 px-4 py-2 text-sm font-medium text-green-200 hover:bg-green-400/30 transition"
+                  >
+                    Download
+                  </button>
+                  <a
+                    href={generatedMeme}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 rounded-lg bg-blue-400/20 border border-blue-400/40 px-4 py-2 text-sm font-medium text-blue-200 hover:bg-blue-400/30 transition text-center"
+                  >
+                    Open in New Tab
+                  </a>
+                </div>
               </div>
             )}
           </div>

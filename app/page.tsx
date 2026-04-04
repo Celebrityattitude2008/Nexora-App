@@ -15,6 +15,7 @@ import { SpotifySearch } from '../components/SpotifySearch';
 import { StockMarketTracker } from '../components/StockMarketTracker';
 import { MemeGenerator } from '../components/MemeGenerator';
 import { CreatorPanel } from '../components/CreatorPanel';
+import { NotificationService } from '../components/NotificationService';
 import { auth } from '../components/firebase';
 
 export default function HomePage() {
@@ -52,6 +53,7 @@ export default function HomePage() {
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100 px-4 py-6 sm:px-6 md:px-10 md:py-8">
+      <NotificationService />
       <div className="mx-auto max-w-7xl">
         <div className="mb-6 sm:mb-8 flex flex-col gap-4 sm:gap-6 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex-1">

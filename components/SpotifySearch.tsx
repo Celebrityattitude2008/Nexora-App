@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 
 type SpotifyTrack = {
@@ -19,63 +19,109 @@ type SpotifyArtist = {
   external_urls: { spotify: string };
 };
 
+type SearchResult = SpotifyTrack | SpotifyArtist;
+
+const isTrack = (item: SearchResult): item is SpotifyTrack => 'preview_url' in item;
+
+const formatTime = (seconds: number) => {
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60).toString().padStart(2, '0');
+  return `${mins}:${secs}`;
+};
+
 export function SpotifySearch() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchType, setSearchType] = useState<'track' | 'artist'>('track');
-  const [results, setResults] = useState<(SpotifyTrack | SpotifyArtist)[]>([]);
+  const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [currentTrack, setCurrentTrack] = useState<SpotifyTrack | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  const handleSearch = async (e: React.FormEvent) => {
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    const onTimeUpdate = () => setCurrentTime(audio.currentTime);
+    const onLoadedMetadata = () => setDuration(audio.duration || 30);
+    const onEnded = () => setIsPlaying(false);
+
+    audio.addEventListener('timeupdate', onTimeUpdate);
+    audio.addEventListener('loadedmetadata', onLoadedMetadata);
+    audio.addEventListener('ended', onEnded);
+
+    return () => {
+      audio.removeEventListener('timeupdate', onTimeUpdate);
+      audio.removeEventListener('loadedmetadata', onLoadedMetadata);
+      audio.removeEventListener('ended', onEnded);
+    };
+  }, [currentTrack]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    if (isPlaying) {
+      audio.play().catch(() => setIsPlaying(false));
+    } else {
+      audio.pause();
+    }
+  }, [isPlaying, currentTrack]);
+
+  const handleSearch = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!searchQuery.trim()) return;
 
     setLoading(true);
     setError('');
+    setResults([]);
+
     try {
-      // Using Spotify API - you'll need to add your Client ID and Secret to .env.local
-      // Get credentials from https://developer.spotify.com
-      const clientId = process.env.NEXT_PUBLIC_SPOTIFY_CLIENT_ID || '';
-      const clientSecret = process.env.NEXT_PUBLIC_SPOTIFY_CLIENT_SECRET || '';
-
-      if (!clientId || !clientSecret) {
-        setError('Spotify credentials not configured. Add to .env.local');
-        setResults([]);
-        return;
-      }
-
-      // Get access token
-      const tokenResponse = await axios.post(
-        'https://accounts.spotify.com/api/token',
-        'grant_type=client_credentials',
-        {
-          headers: {
-            Authorization: `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`,
-            'Content-Type': 'application/x-www-form-urlencoded',
-          },
-        }
-      );
-
-      const accessToken = tokenResponse.data.access_token;
-
-      // Search
-      const response = await axios.get('https://api.spotify.com/v1/search', {
-        headers: { Authorization: `Bearer ${accessToken}` },
-        params: {
-          q: searchQuery,
-          type: searchType,
-          limit: 5,
-        },
+      const response = await axios.get('/api/spotify/search', {
+        params: { q: searchQuery, type: searchType, limit: 5 },
       });
 
       const data = searchType === 'track' ? response.data.tracks.items : response.data.artists.items;
-      setResults(data);
+      setResults(data || []);
     } catch (err) {
-      setError('Search failed. Configure Spotify API credentials.');
-      console.error(err);
+      const message = axios.isAxiosError(err)
+        ? err.response?.data?.error || err.message
+        : err instanceof Error
+        ? err.message
+        : 'Unknown error';
+
+      setError(`Search failed. ${message}`);
     }
+
     setLoading(false);
+  };
+
+  const selectTrack = (track: SpotifyTrack) => {
+    if (!track.preview_url) {
+      setError('This track does not have a Spotify preview available.');
+      return;
+    }
+
+    setError('');
+    if (currentTrack?.id === track.id) {
+      setIsPlaying((prev) => !prev);
+      return;
+    }
+
+    setCurrentTrack(track);
+    setIsPlaying(true);
+    setCurrentTime(0);
+    setDuration(0);
+  };
+
+  const handleSeek = (value: number) => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.currentTime = value;
+    setCurrentTime(value);
   };
 
   return (
@@ -85,7 +131,6 @@ export function SpotifySearch() {
         <h2 className="mt-1 text-xl sm:text-2xl font-semibold text-white">Spotify Search</h2>
       </div>
 
-      {/* Search Form */}
       <form onSubmit={handleSearch} className="mb-6">
         <div className="flex flex-col sm:flex-row gap-3 mb-4">
           <input
@@ -104,7 +149,6 @@ export function SpotifySearch() {
           </button>
         </div>
 
-        {/* Search Type Toggle */}
         <div className="flex gap-2">
           {(['track', 'artist'] as const).map((type) => (
             <button
@@ -123,34 +167,49 @@ export function SpotifySearch() {
         </div>
       </form>
 
-      {/* Error Message */}
       {error && <div className="text-sm text-amber-300 mb-4 py-2">{error}</div>}
 
-      {/* Results Grid */}
-      {results.length > 0 && (
+      {results.length > 0 ? (
         <div className="space-y-3">
           {results.map((result) => (
             <div
               key={result.id}
-              className="rounded-2xl border border-slate-700/60 bg-slate-950/50 p-4 hover:bg-slate-950/80 transition cursor-pointer"
-              onClick={() => {
-                if ('preview_url' in result) setCurrentTrack(result);
-              }}
+              className="rounded-2xl border border-slate-700/60 bg-slate-950/50 p-4 hover:bg-slate-950/80 transition"
             >
-              <div className="flex gap-4">
+              <div className="flex gap-4 items-start">
                 <img
-                  src={('album' in result ? result.album.images[0]?.url : result.images[0]?.url) || ''}
+                  src={isTrack(result) ? result.album.images[0]?.url : result.images[0]?.url}
                   alt={result.name}
                   className="w-16 h-16 rounded-lg object-cover"
                 />
                 <div className="flex-1 min-w-0">
-                  <h3 className="font-semibold text-slate-100 text-sm sm:text-base truncate">{result.name}</h3>
-                  <p className="text-xs sm:text-sm text-slate-400 mt-1">
-                    {'artists' in result ? result.artists.map((a) => a.name).join(', ') : 'Artist'}
-                  </p>
-                  {('album' in result && result.album) && (
-                    <p className="text-xs text-slate-500 mt-1">{result.album.name}</p>
-                  )}
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                    <div>
+                      <h3 className="font-semibold text-slate-100 text-sm sm:text-base truncate">{result.name}</h3>
+                      <p className="text-xs sm:text-sm text-slate-400 mt-1">
+                        {isTrack(result) ? result.artists.map((a) => a.name).join(', ') : 'Artist'}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (isTrack(result)) selectTrack(result);
+                      }}
+                      className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                        isTrack(result)
+                          ? 'bg-amber-400/20 text-amber-200 border border-amber-400/40 hover:bg-amber-400/30'
+                          : 'border border-slate-700/60 text-slate-400 bg-slate-800/50 cursor-not-allowed'
+                      }`}
+                      disabled={!isTrack(result)}
+                    >
+                      {isTrack(result)
+                        ? currentTrack?.id === result.id && isPlaying
+                          ? 'Pause Preview'
+                          : 'Play Preview'
+                        : 'No Preview'}
+                    </button>
+                  </div>
+                  {isTrack(result) && <p className="text-xs text-slate-500 mt-2">{result.album.name}</p>}
                   <a
                     href={result.external_urls.spotify}
                     target="_blank"
@@ -164,9 +223,12 @@ export function SpotifySearch() {
             </div>
           ))}
         </div>
-      )}
+      ) : !loading && !error ? (
+        <div className="text-center py-8 text-slate-400 text-sm">
+          Search for tracks or artists to get started
+        </div>
+      ) : null}
 
-      {/* Playing Track */}
       {currentTrack && currentTrack.preview_url && (
         <div className="mt-6 rounded-2xl border border-amber-400/30 bg-slate-950/70 p-4">
           <h3 className="font-semibold text-slate-100 text-sm sm:text-base mb-3">Now Playing</h3>
@@ -181,13 +243,29 @@ export function SpotifySearch() {
               <p className="text-xs text-slate-400">{currentTrack.artists.map((a) => a.name).join(', ')}</p>
             </div>
           </div>
-          <audio src={currentTrack.preview_url} controls className="w-full mt-3 h-8" />
-        </div>
-      )}
-
-      {!loading && results.length === 0 && !error && (
-        <div className="text-center py-8 text-slate-400 text-sm">
-          Search for tracks or artists to get started
+          <audio ref={audioRef} src={currentTrack.preview_url} preload="auto" hidden />
+          <div className="mt-4 flex flex-col gap-3">
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setIsPlaying((prev) => !prev)}
+                className="rounded-full bg-amber-400/20 px-4 py-2 text-sm font-medium text-amber-200 hover:bg-amber-400/30 transition"
+              >
+                {isPlaying ? 'Pause' : 'Play'} Preview
+              </button>
+              <span className="text-xs text-slate-400">
+                {formatTime(currentTime)} / {formatTime(duration)}
+              </span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={duration || 30}
+              value={currentTime}
+              onChange={(e) => handleSeek(Number(e.target.value))}
+              className="h-1 w-full cursor-pointer rounded-full bg-slate-700 accent-amber-400"
+            />
+          </div>
         </div>
       )}
     </section>

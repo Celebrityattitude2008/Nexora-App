@@ -14,8 +14,19 @@ type NewsArticle = {
 
 type NewsCategory = 'technology' | 'sports' | 'business' | 'general';
 
+const fallbackArticles: NewsArticle[] = [
+  {
+    title: 'Stay informed with Nexora News',
+    description: 'Add your NewsAPI key to .env.local, or keep exploring with curated headlines while you configure the integration.',
+    url: '#',
+    urlToImage: 'https://via.placeholder.com/300x200?text=News+Preview',
+    source: { name: 'Nexora' },
+    publishedAt: new Date().toISOString(),
+  },
+];
+
 export function NewsAggregator() {
-  const [articles, setArticles] = useState<NewsArticle[]>([]);
+  const [articles, setArticles] = useState<NewsArticle[]>(fallbackArticles);
   const [category, setCategory] = useState<NewsCategory>('general');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -34,33 +45,30 @@ export function NewsAggregator() {
   const fetchNews = async () => {
     setLoading(true);
     setError('');
+
     try {
-      // Using NewsAPI - you'll need to add your API key to .env.local
-      // Get free API key from https://newsapi.org
-      const apiKey = process.env.NEXT_PUBLIC_NEWS_API_KEY || 'demo';
-      const response = await axios.get('https://newsapi.org/v2/top-headlines', {
+      const response = await axios.get('/api/news', {
         params: {
-          category: category,
-          country: 'us',
-          apiKey: apiKey,
+          category,
         },
       });
 
+      if (!response.data?.articles?.length) {
+        throw new Error('No articles available from NewsAPI.');
+      }
+
       setArticles(response.data.articles.slice(0, 5));
     } catch (err) {
-      setError('Failed to fetch news. Please add your NewsAPI key to .env.local');
-      // Set demo data
-      setArticles([
-        {
-          title: 'Latest Technology News',
-          description: 'Stay updated with the latest tech trends and innovations.',
-          url: '#',
-          urlToImage: 'https://via.placeholder.com/300x200?text=Tech+News',
-          source: { name: 'Tech News' },
-          publishedAt: new Date().toISOString(),
-        },
-      ]);
+      const message = axios.isAxiosError(err)
+        ? err.response?.data?.error || err.message
+        : err instanceof Error
+        ? err.message
+        : 'Unknown error';
+
+      setError(`Failed to fetch news. ${message}`);
+      setArticles(fallbackArticles);
     }
+
     setLoading(false);
   };
 
@@ -74,7 +82,6 @@ export function NewsAggregator() {
         <div className="rounded-2xl bg-slate-800/90 px-3 py-2 text-xs sm:text-sm text-slate-300">Live</div>
       </div>
 
-      {/* Category Filter */}
       <div className="mb-6 flex flex-wrap gap-2 sm:gap-3">
         {categories.map((cat) => (
           <button
@@ -91,11 +98,10 @@ export function NewsAggregator() {
         ))}
       </div>
 
-      {/* Articles Grid */}
       {loading ? (
         <div className="text-center py-8 text-slate-400">Loading articles...</div>
       ) : error ? (
-        <div className="text-sm text-amber-300 py-4">{error}</div>
+        <div className="rounded-2xl border border-amber-400/20 bg-amber-400/10 p-4 text-sm text-amber-200">{error}</div>
       ) : (
         <div className="grid gap-4 sm:gap-5">
           {articles.map((article, idx) => (
@@ -112,6 +118,9 @@ export function NewsAggregator() {
                     src={article.urlToImage}
                     alt={article.title}
                     className="w-full sm:w-24 h-32 sm:h-20 object-cover rounded-lg"
+                    onError={(event) => {
+                      (event.target as HTMLImageElement).src = 'https://via.placeholder.com/300x200?text=News+Image';
+                    }}
                   />
                 )}
                 <div className="flex-1">
