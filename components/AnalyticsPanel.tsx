@@ -4,7 +4,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { Line, Bar, Doughnut } from 'react-chartjs-2';
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, BarElement, ArcElement, Tooltip, Legend } from 'chart.js';
 import { onValue } from 'firebase/database';
-import { tasksRef, goalsRef } from './firebase';
+import { userTasksRef, userGoalsRef } from './firebase';
+import type { User } from 'firebase/auth';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, ArcElement, Tooltip, Legend);
 
@@ -26,13 +27,17 @@ type Goal = {
   createdAt: string;
 };
 
-export function AnalyticsPanel() {
+interface AnalyticsPanelProps {
+  user: User;
+}
+
+export function AnalyticsPanel({ user }: AnalyticsPanelProps) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribeTasks = onValue(tasksRef, (snapshot) => {
+    const unsubscribeTasks = onValue(userTasksRef(user.uid), (snapshot) => {
       const value = snapshot.val();
       if (value) {
         const fetched = Object.entries(value).map(([key, data]) => ({ id: key, ...(data as Omit<Task, 'id'>) }));
@@ -40,7 +45,7 @@ export function AnalyticsPanel() {
       }
     });
 
-    const unsubscribeGoals = onValue(goalsRef, (snapshot) => {
+    const unsubscribeGoals = onValue(userGoalsRef(user.uid), (snapshot) => {
       const value = snapshot.val();
       if (value) {
         const fetched = Object.entries(value).map(([key, data]) => ({ id: key, ...(data as Omit<Goal, 'id'>) }));
@@ -53,7 +58,7 @@ export function AnalyticsPanel() {
       unsubscribeTasks();
       unsubscribeGoals();
     };
-  }, []);
+  }, [user.uid]);
 
   // Calculate productivity metrics
   const metrics = useMemo(() => {

@@ -1,22 +1,23 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { onAuthStateChanged, signOut, type User } from 'firebase/auth';
 import { TaskList } from '../components/TaskList';
 import { DailyGoals } from '../components/DailyGoals';
-import { AnalyticsPanel } from '../components/AnalyticsPanel';
 import { NotesWidget } from '../components/NotesWidget';
 import { WeatherCard } from '../components/WeatherCard';
 import { CalendarWidget } from '../components/CalendarWidget';
 import { AuthPanel } from '../components/AuthPanel';
 import { WelcomeCard } from '../components/WelcomeCard';
-import { NewsAggregator } from '../components/NewsAggregator';
 import { SpotifySearch } from '../components/SpotifySearch';
-import { StockMarketTracker } from '../components/StockMarketTracker';
-import { MemeGenerator } from '../components/MemeGenerator';
 import { CreatorPanel } from '../components/CreatorPanel';
 import { NotificationService } from '../components/NotificationService';
 import { auth } from '../components/firebase';
+
+// Lazy load heavy components
+const AnalyticsPanel = lazy(() => import('../components/AnalyticsPanel').then(m => ({ default: m.AnalyticsPanel })));
+const NewsAggregator = lazy(() => import('../components/NewsAggregator').then(m => ({ default: m.NewsAggregator })));
+const StockMarketTracker = lazy(() => import('../components/StockMarketTracker').then(m => ({ default: m.StockMarketTracker })));
 
 export default function HomePage() {
   const [user, setUser] = useState<User | null>(null);
@@ -29,6 +30,13 @@ export default function HomePage() {
     });
     return unsubscribe;
   }, []);
+
+  const LoadingSkeleton = () => (
+    <div className="rounded-3xl border border-slate-700 bg-slate-900/80 px-6 py-8 shadow-panel animate-shimmer">
+      <div className="h-6 bg-slate-800/50 rounded-lg mb-4 w-1/4"></div>
+      <div className="h-64 bg-slate-800/50 rounded-lg"></div>
+    </div>
+  );
 
   if (loading) {
     return (
@@ -53,7 +61,7 @@ export default function HomePage() {
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100 px-4 py-6 sm:px-6 md:px-10 md:py-8">
-      <NotificationService />
+      <NotificationService user={user} />
       <div className="mx-auto max-w-7xl">
         <div className="mb-6 sm:mb-8 flex flex-col gap-4 sm:gap-6 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex-1">
@@ -78,26 +86,32 @@ export default function HomePage() {
         </div>
 
         {/* Main Grid - Mobile First Responsive */}
-        <section className="space-y-6">
+        <section className="space-y-6 animate-stagger">
           {/* Top Row: Productivity (full width on mobile, 2 cols on larger) */}
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-[1.15fr_0.85fr]">
-            <TaskList />
-            <DailyGoals />
+            <TaskList user={user} />
+            <DailyGoals user={user} />
           </div>
 
           {/* Analytics */}
-          <AnalyticsPanel />
+          <Suspense fallback={<LoadingSkeleton />}>
+            <AnalyticsPanel user={user} />
+          </Suspense>
 
           {/* News and Spotify (stack on mobile) */}
           <div className="grid gap-6 lg:grid-cols-2">
-            <NewsAggregator />
+            <Suspense fallback={<LoadingSkeleton />}>
+              <NewsAggregator />
+            </Suspense>
             <SpotifySearch />
           </div>
 
-          {/* Stock and Meme (stack on mobile) */}
+          {/* Stock and Creator (stack on mobile) */}
           <div className="grid gap-6 lg:grid-cols-2">
-            <StockMarketTracker />
-            <MemeGenerator />
+            <Suspense fallback={<LoadingSkeleton />}>
+              <StockMarketTracker />
+            </Suspense>
+            <CreatorPanel />
           </div>
 
           {/* Right Sidebar items (stack on mobile) */}
@@ -107,8 +121,7 @@ export default function HomePage() {
               <WeatherCard />
             </div>
             <div className="grid gap-6">
-              <CalendarWidget />
-              <CreatorPanel />
+              <CalendarWidget user={user} />
             </div>
           </div>
         </section>

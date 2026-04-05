@@ -2,7 +2,8 @@
 
 import { useEffect, useRef } from 'react';
 import { onValue } from 'firebase/database';
-import { tasksRef, goalsRef } from './firebase';
+import { userTasksRef, userGoalsRef } from './firebase';
+import type { User } from 'firebase/auth';
 
 // Extend Window interface for OneSignal
 declare global {
@@ -38,7 +39,11 @@ type NotificationTrigger = {
 
 let OneSignal: any;
 
-export function NotificationService() {
+interface NotificationServiceProps {
+  user: User;
+}
+
+export function NotificationService({ user }: NotificationServiceProps) {
   const lastCheckRef = useRef<Record<string, number>>({});
   const lastActivityRef = useRef<number>(Date.now());
   const inactivityTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -83,7 +88,7 @@ export function NotificationService() {
 
   // Fetch and update tasks from Firebase
   useEffect(() => {
-    const unsubscribe = onValue(tasksRef, (snapshot) => {
+    const unsubscribe = onValue(userTasksRef(user.uid), (snapshot) => {
       const value = snapshot.val();
       if (value) {
         tasksRef_internal.current = Object.entries(value).map(([key, data]) => ({
@@ -93,11 +98,11 @@ export function NotificationService() {
       }
     });
     return unsubscribe;
-  }, []);
+  }, [user.uid]);
 
   // Fetch and update goals from Firebase
   useEffect(() => {
-    const unsubscribe = onValue(goalsRef, (snapshot) => {
+    const unsubscribe = onValue(userGoalsRef(user.uid), (snapshot) => {
       const value = snapshot.val();
       if (value) {
         goalsRef_internal.current = Object.entries(value).map(([key, data]) => ({
@@ -107,7 +112,7 @@ export function NotificationService() {
       }
     });
     return unsubscribe;
-  }, []);
+  }, [user.uid]);
   const sendNotification = async (trigger: NotificationTrigger) => {
     if (!OneSignal) return;
 

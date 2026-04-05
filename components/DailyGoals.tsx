@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { onValue, ref, set, push, remove } from 'firebase/database';
-import { database, goalsRef } from './firebase';
+import { database, userGoalsRef } from './firebase';
+import type { User } from 'firebase/auth';
 
 type Goal = {
   id: string;
@@ -21,7 +22,11 @@ const defaultGoals: Goal[] = [
 
 const categories = ['Health', 'Fitness', 'Learning', 'Work', 'Personal', 'Social', 'Other'];
 
-export function DailyGoals() {
+interface DailyGoalsProps {
+  user: User;
+}
+
+export function DailyGoals({ user }: DailyGoalsProps) {
   const [goals, setGoals] = useState<Goal[]>(defaultGoals);
   const [newGoalLabel, setNewGoalLabel] = useState('');
   const [newGoalTotal, setNewGoalTotal] = useState(1);
@@ -39,7 +44,7 @@ export function DailyGoals() {
   }, [goals]);
 
   useEffect(() => {
-    const unsubscribe = onValue(goalsRef, (snapshot) => {
+    const unsubscribe = onValue(userGoalsRef(user.uid), (snapshot) => {
       const value = snapshot.val();
       if (!value) return;
       const fetched = Object.entries(value).map(([key, data]) => ({ id: key, ...(data as Omit<Goal, 'id'>) }));
@@ -47,7 +52,7 @@ export function DailyGoals() {
     });
 
     return unsubscribe;
-  }, []);
+  }, [user.uid]);
 
   const addGoal = async () => {
     if (!newGoalLabel.trim() || newGoalTotal < 1) return;
@@ -60,7 +65,7 @@ export function DailyGoals() {
       createdAt: new Date().toISOString(),
     };
 
-    const newGoalRef = await push(goalsRef, newGoal);
+    const newGoalRef = await push(userGoalsRef(user.uid), newGoal);
     const goalId = newGoalRef.key;
     if (goalId) {
       setGoals(prev => [...prev, { ...newGoal, id: goalId }]);
@@ -76,7 +81,7 @@ export function DailyGoals() {
     if (!goal || goal.current >= goal.total) return;
 
     const updated = { ...goal, current: goal.current + 1 };
-    await set(ref(database, `goals/${goalId}`), {
+    await set(ref(database, `users/${user.uid}/goals/${goalId}`), {
       label: updated.label,
       current: updated.current,
       total: updated.total,
@@ -91,7 +96,7 @@ export function DailyGoals() {
     if (!goal || goal.current <= 0) return;
 
     const updated = { ...goal, current: goal.current - 1 };
-    await set(ref(database, `goals/${goalId}`), {
+    await set(ref(database, `users/${user.uid}/goals/${goalId}`), {
       label: updated.label,
       current: updated.current,
       total: updated.total,
@@ -102,7 +107,7 @@ export function DailyGoals() {
   };
 
   const deleteGoal = async (goalId: string) => {
-    await remove(ref(database, `goals/${goalId}`));
+    await remove(ref(database, `users/${user.uid}/goals/${goalId}`));
     setGoals((current) => current.filter((item) => item.id !== goalId));
   };
 
@@ -119,7 +124,7 @@ export function DailyGoals() {
     if (!goal) return;
 
     const updated = { ...goal, label: editLabel.trim(), total: editTotal };
-    await set(ref(database, `goals/${editingGoal}`), {
+    await set(ref(database, `users/${user.uid}/goals/${editingGoal}`), {
       label: updated.label,
       current: updated.current,
       total: updated.total,
@@ -135,7 +140,7 @@ export function DailyGoals() {
   const resetAllGoals = async () => {
     const updatedGoals = goals.map(goal => ({ ...goal, current: 0 }));
     for (const goal of updatedGoals) {
-      await set(ref(database, `goals/${goal.id}`), {
+      await set(ref(database, `users/${user.uid}/goals/${goal.id}`), {
         label: goal.label,
         current: goal.current,
         total: goal.total,
