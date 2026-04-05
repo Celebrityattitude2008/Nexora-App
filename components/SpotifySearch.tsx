@@ -84,7 +84,20 @@ export function SpotifySearch() {
         params: { q: searchQuery, type: searchType, limit: 5 },
       });
 
-      const data = searchType === 'track' ? response.data.tracks.items : response.data.artists.items;
+      // Handle different response structures safely
+      let data: SearchResult[] = [];
+      if (searchType === 'track' && response.data?.tracks?.items) {
+        data = response.data.tracks.items;
+      } else if (searchType === 'artist' && response.data?.artists?.items) {
+        data = response.data.artists.items;
+      } else {
+        // Handle unexpected response structure
+        console.error('Unexpected API response structure:', response.data);
+        setError('Unexpected response from Spotify API. Please try again.');
+        setLoading(false);
+        return;
+      }
+
       setResults(data || []);
     } catch (err) {
       const message = axios.isAxiosError(err)
